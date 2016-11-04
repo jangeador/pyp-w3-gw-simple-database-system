@@ -143,3 +143,26 @@ class SimpleDatabaseTestCase(unittest.TestCase):
             {'name': 'alive', 'type': 'bool'},
         ]
         self.assertEqual(columns, expected)
+
+    def test_sorted_reverse(self):
+        self.db.authors.insert(3, 'Julio Cortázar', date(1914, 8, 26), 'ARG', False)
+        self.assertEqual(self.db.authors.count(), 3)
+        gen = self.db.authors.sorted(key='id', reverse=True)
+        author = next(gen)
+        self.assertEqual(author.id, 3)
+        author = next(gen)
+        self.assertEqual(author.id, 2)
+        author = next(gen)
+        self.assertEqual(author.id, 1)
+
+    def test_sort_by_name(self):
+        self.db.authors.insert(3, 'Julio Cortázar', date(1914, 8, 26), 'ARG', False)
+        self.db.authors.insert(4, 'Zulio Cortázar', date(1914, 8, 26), 'MEX', True)
+        self.db.authors.insert(5, 'Agapito Pascual', date(1945, 8, 21), 'CHI', True)
+        self.db.authors.insert(6, 'Juan Lennon', date(1976, 10, 1), 'BRA', True)
+        gen = self.db.authors.sorted(key='name')
+        author = next(gen)
+        self.assertEqual(author.name, 'Agapito Pascual')
+        author = next(gen)
+        self.assertEqual(author.name, 'Edgard Alan Poe')
+

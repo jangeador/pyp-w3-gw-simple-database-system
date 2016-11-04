@@ -15,6 +15,7 @@ def json_serializer(obj):
 
 class Row(object):
     def __init__(self, *args, **kwargs):
+        self.values = args
         self.columns = kwargs.get('columns', None)
         if self.columns:
             for idx, column in enumerate(self.columns):
@@ -23,11 +24,16 @@ class Row(object):
             for idx, arg in enumerate(args):
                 setattr(self, str(idx), arg)
 
-    def matches_query(self, col_name, col_value):
-        if col_name in [c['name'] for c in self.columns]:
-            if getattr(self, col_name) == col_value:
-                return True
+    def matches_query(self, **kwargs):
+        for k, v in kwargs.items():
+            if k in [c['name'] for c in self.columns]:
+                if getattr(self, k) == v:
+                    return True
         return False
+
+    def __repr__(self):
+        name_value = dict(zip([c['name'] for c in self.columns], self.values))
+        return 'Column: {}'.format(name_value)
 
 
 class Table(object):
@@ -51,28 +57,34 @@ class Table(object):
                                       .format(self.columns[idx]['name'],
                                               type(arg).__name__,
                                               self.columns[idx]['type']))
-
-        self.rows.append(args)
-
+        self.rows.append(Row(*args, columns=self.columns))
         self.save()
 
     def query(self, **kwargs):
         for row in self.rows:
-            row_obj = Row(*row, columns=self.columns)
-            for k, v in kwargs.items():
-                if row_obj.matches_query(k, v):
-                    yield row_obj
+            # for k, v in kwargs.items():
+            if row.matches_query(**kwargs):
+                yield row
+
+    def sorted(self, key=None, reverse=False):
+        if key and key in self.column_names():
+            for row in sorted(self.rows, key=lambda x: getattr(x, key), reverse=reverse):
+                yield row
+        else:
+            raise ValidationError('Invalid sort key')
 
     def all(self):
         for row in self.rows:
-            row_obj = Row(*row, columns=self.columns)
-            yield row_obj
+            yield row
 
     def count(self):
         return len(self.rows)
 
     def describe(self):
         return self.columns
+
+    def column_names(self):
+        return [c['name'] for c in self.columns]
 
     def get_file_name(self):
         return os.path.join(self.db.db_path, '{}.json'.format(self.name))
@@ -82,7 +94,7 @@ class Table(object):
             with open(self.get_file_name(), 'r') as in_file:
                 json_data = json.load(in_file)
             self.columns = json_data['columns']
-            self.rows = json_data['rows']
+            self.rows = [Row(*r, columns=self.columns) for r in json_data['rows']]
             if self.name not in self.db.tables:
                 self.db.tables.append(self.name)
                 setattr(self.db, self.name, self)
@@ -91,7 +103,7 @@ class Table(object):
 
     def save(self):
         data = {'columns': self.columns,
-                'rows': self.rows}
+                'rows': [r.values for r in self.rows]}
         with open(self.get_file_name(), 'w') as out:
             json.dump(data, out, default=json_serializer)
 
@@ -109,12 +121,12 @@ class DataBase(object):
     def create(cls, name):
         try:
             os.makedirs(os.path.join(BASE_DB_FILE_PATH, name))
-            
+
         except OSError as e:
             if e.errno == errno.EEXIST:
                 raise ValidationError('Database with name "{}" already exists.'
-                                  .format(name))
-            
+                                      .format(name))
+
     def create_table(self, table_name, columns):
         table = Table(self, table_name, columns=columns)
         self.tables.append(table_name)
